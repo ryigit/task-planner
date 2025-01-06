@@ -3,36 +3,40 @@
 namespace App\Services;
 
 use App\Factory\TodoProviderFactory;
+use App\Repositories\ProviderRepository;
 use App\Repositories\TaskRepository;
-use App\Models\Provider;
+use Illuminate\Support\Facades\Log;
 
 class TaskProviderService
 {
     public function __construct(
         private readonly TodoProviderFactory $factory,
-        private readonly TaskRepository $taskRepository
+        private readonly TaskRepository $taskRepository,
+        private readonly ProviderRepository $providerRepository,
     ) {}
 
     public function fetchAndPersistTasks(): array
     {
-        $allTasks = [];
+        try {
+            $dbProviders = $this->providerRepository->getActiveDefaultProviders();
 
-        // Fetch active providers from the database
-        $dbProviders = Provider::where('is_active', true)
-            ->where('type', 'default')
-            ->get();
+            $allTasks = array_reduce($dbProviders, function (array $tasks, $providerConfig) {
+                $provider = $this->factory->create('default', $providerConfig);
+                return array_merge($tasks, $provider->getTasks());
+            }, []);
 
-        foreach ($dbProviders as $providerConfig) {
-            $provider = $this->factory->create('default', $providerConfig);
-            $tasks = $provider->getTasks();
-            $allTasks = array_merge($allTasks, $tasks);
+            $this->taskRepository->deleteAll();
+            $this->taskRepository->saveMany($allTasks);
+
+            Log::info('Tasks synchronized successfully', ['count' => count($allTasks)]);
+
+            return $allTasks;
+        } catch (\Exception $e) {
+            Log::error('Failed to synchronize tasks', [
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
         }
-
-        // Persist tasks using the repository
-        $this->taskRepository->deleteAll();
-        $this->taskRepository->saveMany($allTasks);
-
-        return $allTasks;
     }
 }
 

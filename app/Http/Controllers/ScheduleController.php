@@ -9,6 +9,7 @@ use Exception;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Log;
 
 class ScheduleController extends Controller
 {
@@ -24,24 +25,71 @@ class ScheduleController extends Controller
      */
     public function index(): View|Factory|Application
     {
-        $schedule = $this->createSchedule();
+        try {
+            // Check for developers first
+            $developerCount = $this->developerRepository->countActiveDevelopers();
+            if ($developerCount === 0) {
+                return view('schedule.index', [
+                    'noDevelopers' => true
+                ]);
+            }
 
-        return view('schedule.index', [
-            'schedule' => $schedule['schedule'],
-            'totalWeeks' => $schedule['total_weeks']
-        ]);
+            // Check for tasks
+            $tasks = $this->taskRepository->getAll();
+            if (count($tasks) === 0) {
+                return view('schedule.index', [
+                    'noTasks' => true
+                ]);
+            }
+
+            // If we have both, create schedule
+            $developers = $this->developerRepository->getActiveDevelopers();
+            $schedule = $this->schedulerService->calculateSchedule($developers, $tasks);
+
+            return view('schedule.index', [
+                'schedule' => $schedule['schedule'],
+                'totalWeeks' => $schedule['total_weeks']
+            ]);
+        } catch (Exception $e) {
+            Log::error('Failed to create schedule', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return view('schedule.index', [
+                'error' => 'An error occurred while creating the schedule. Please try again later.'
+            ]);
+        }
     }
 
-    private function createSchedule(): array
+    /**
+     * @throws Exception
+     */
+    private function createSchedule(): ?array
     {
         $developerCount = $this->developerRepository->countActiveDevelopers();
+
         if ($developerCount === 0) {
-            throw new Exception('No active developers found');
+            return null;
         }
 
-        $developers = $this->developerRepository->getActiveDevelopers();
-        $tasks = $this->taskRepository->getAll();
+        try {
+            $developers = $this->developerRepository->getActiveDevelopers();
+            $tasks = $this->taskRepository->getAll();
 
-        return $this->schedulerService->calculateSchedule($developers, $tasks);
+            Log::info('Creating schedule', [
+                'developer_count' => count($developers),
+                'task_count' => count($tasks)
+            ]);
+
+            return $this->schedulerService->calculateSchedule($developers, $tasks);
+        } catch (Exception $e) {
+            Log::error('Error while fetching data for schedule', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            throw $e;
+        }
     }
 }

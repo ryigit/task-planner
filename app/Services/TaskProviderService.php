@@ -3,23 +3,21 @@
 namespace App\Services;
 
 use App\Factory\TodoProviderFactory;
+use App\Repositories\TaskRepository;
 use App\Models\Provider;
-use App\Models\Task;
 
 class TaskProviderService
 {
-    private TodoProviderFactory $factory;
+    public function __construct(
+        private readonly TodoProviderFactory $factory,
+        private readonly TaskRepository $taskRepository
+    ) {}
 
-    public function __construct(TodoProviderFactory $factory)
-    {
-        $this->factory = $factory;
-    }
-
-    public function fetchAllTasks(): array
+    public function fetchAndPersistTasks(): array
     {
         $allTasks = [];
 
-        // Handle mappable providers from database
+        // Fetch active providers from the database
         $dbProviders = Provider::where('is_active', true)
             ->where('type', 'default')
             ->get();
@@ -30,17 +28,11 @@ class TaskProviderService
             $allTasks = array_merge($allTasks, $tasks);
         }
 
-        foreach ($allTasks as $task) {
-            Task::create([
-                'name' => $task['name'],
-                'complexity' => $task['complexity'],
-                'duration' => $task['duration'],
-                'provider_id' => $task['provider_id'],
-                'source_id' => $task['source_id'],
-                'original_payload' => $task['original_payload']
-            ]);
-        }
+        // Persist tasks using the repository
+        $this->taskRepository->deleteAll();
+        $this->taskRepository->saveMany($allTasks);
 
         return $allTasks;
     }
 }
+

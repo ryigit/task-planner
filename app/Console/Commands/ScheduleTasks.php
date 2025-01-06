@@ -40,34 +40,15 @@ class ScheduleTasks extends Command
         $this->info('Starting task orchestration...');
 
         try {
-            $this->fetchTasks();
+            $tasks = $this->taskProviderService->fetchAndPersistTasks();
+            $this->info("Retrieved and saved " . count($tasks) . " tasks.");
+
             $schedule = $this->createSchedule();
             $this->displayResults($schedule);
         } catch (Exception $e) {
             $this->error("Error during orchestration: " . $e->getMessage());
             return 1;
         }
-    }
-
-    private function fetchTasks(): void
-    {
-        $this->info('Fetching tasks from providers...');
-
-        $this->taskRepository->deleteAll();
-
-        $tasks = $this->taskProviderService->fetchAllTasks();
-        $count = count($tasks);
-
-        $this->info("Retrieved {$count} tasks from providers");
-
-        $this->table(
-            ['Provider', 'Count'],
-            collect($tasks)
-                ->groupBy('provider')
-                ->map(fn($tasks, $provider) => [$provider, count($tasks)])
-                ->values()
-                ->toArray()
-        );
     }
 
     private function createSchedule(): array

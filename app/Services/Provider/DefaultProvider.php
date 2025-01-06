@@ -24,15 +24,20 @@ class DefaultProvider implements ToDoProviderInterface
             $rawTasks = $response->json();
             $mappings = json_decode($this->providerConfig->field_mappings, true);
 
-            return array_map(function ($rawTask) use ($mappings) {
-                return [
+            $taskData = [];
+
+            foreach ($rawTasks as $rawTask) {
+                $taskData[] = [
                     'name' => $rawTask[$mappings['name']] ?? null,
-                    'difficulty' => $rawTask[$mappings['difficulty']] ?? null,
+                    'complexity' => $rawTask[$mappings['difficulty']] ?? null,
                     'duration' => $rawTask[$mappings['duration']] ?? null,
-                    'provider' => $this->providerConfig->name,
+                    'provider_id' => $this->providerConfig->id,
+                    'source_id' => $rawTask['id'] ?? null,
                     'original_payload' => json_encode($rawTask)
                 ];
-            }, $rawTasks);
+            }
+
+            return $taskData;
         } catch (Exception $e) {
             Log::error("Error in DefaultProvider: " . $e->getMessage());
             return [];

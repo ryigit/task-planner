@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Developer;
-use App\Models\Task;
+use App\Repositories\DeveloperRepository;
+use App\Repositories\TaskRepository;
 use App\Services\SchedulerService;
 use App\Services\TaskProviderService;
 use Exception;
@@ -27,34 +27,23 @@ class ScheduleTasks extends Command
 
     public function __construct(
         private readonly TaskProviderService $taskProviderService,
-        private readonly SchedulerService $schedulerService
+        private readonly SchedulerService $schedulerService,
+        private readonly DeveloperRepository $developerRepository,
+        private readonly TaskRepository $taskRepository
     )
     {
         parent::__construct();
     }
 
-    /**
-     * Execute the console command.
-     */
     public function handle()
     {
         $this->info('Starting task orchestration...');
 
         try {
-            // Step 1: Fetch tasks
             $this->fetchTasks();
-
-            if ($this->option('fetch-only')) {
-                return 0;
-            }
-
-            // Step 2: Create schedule
-            $this->createSchedule();
-
-            // Step 3: Display results
-            $this->displayResults();
-
-        } catch (\Exception $e) {
+            $schedule = $this->createSchedule();
+            $this->displayResults($schedule);
+        } catch (Exception $e) {
             $this->error("Error during orchestration: " . $e->getMessage());
             return 1;
         }
@@ -64,15 +53,13 @@ class ScheduleTasks extends Command
     {
         $this->info('Fetching tasks from providers...');
 
-        // Clear existing unassigned tasks
-        Task::whereNull('assigned_to')->delete();
+        $this->taskRepository->deleteAll();
 
         $tasks = $this->taskProviderService->fetchAllTasks();
-
         $count = count($tasks);
+
         $this->info("Retrieved {$count} tasks from providers");
 
-        // Display task summary
         $this->table(
             ['Provider', 'Count'],
             collect($tasks)
@@ -83,58 +70,95 @@ class ScheduleTasks extends Command
         );
     }
 
-    /**
-     * @throws Exception
-     */
-    private function createSchedule(): void
+    private function createSchedule(): array
     {
         $this->info('Creating work schedule...');
 
-        // Verify we have active developers
-        $developerCount = Developer::where('is_active', true)->count();
+        $developerCount = $this->developerRepository->countActiveDevelopers();
         if ($developerCount === 0) {
             throw new Exception('No active developers found in the system');
         }
 
-        $schedule = $this->schedulerService->calculateSchedule();
+        $developers = $this->developerRepository->getActiveDevelopers();
+        $tasks = $this->taskRepository->getAll();
+
+        $schedule = $this->schedulerService->calculateSchedule($developers, $tasks);
 
         $this->info("Schedule created for {$schedule['total_weeks']} weeks");
+
+        return $schedule;
     }
 
-    private function displayResults(): void
+    private function displayResults(array $scheduleData): void
     {
+        $schedule = $scheduleData['schedule'];
         $this->info('Final Schedule Summary:');
 
-        // Get schedule summary by developer
-        $summary = Task::whereNotNull('assigned_to')
-            ->selectRaw('assigned_to, COUNT(*) as task_count, SUM(duration) as total_hours')
-            ->groupBy('assigned_to')
-            ->get();
+        foreach ($schedule[1] as $developer => $tasks) {
+            $this->info("\n📋 Developer: $developer");
 
-        // Display developer workload
-        $this->table(
-            ['Developer', 'Tasks', 'Total Hours'],
-            $summary->map(fn($item) => [
-                $item->assigned_to,
-                $item->task_count,
-                $item->total_hours
-            ])->toArray()
-        );
+            if (empty($tasks)) {
+                $this->warn('No tasks assigned');
+                continue;
+            }
 
-        // Display weekly breakdown
-        $weeklyBreakdown = Task::whereNotNull('week_number')
-            ->selectRaw('week_number, COUNT(*) as task_count')
+            $this->table(
+                ['Task ID', 'Duration (hours)', 'Complexity'],
+                collect($tasks)->map(fn($task) => [
+                    $task['id'],
+                    $task['duration'],
+                    $task['complexity'] ?? 'Not specified'
+                ])->toArray()
+            );
+
+            //toDo: Calculate total hours
+            $totalHours = collect($tasks)->sum('duration');
+            $taskCount = count($tasks);
+
+            $this->info("📊 Summary for $developer:");
+            $this->line(" • Total Tasks: $taskCount");
+            $this->line(" • Total Hours: $totalHours");
+            $this->line(str_repeat('-', 50));
+        }
+
+        $weeklyTasks = collect($schedule[1])
+            ->flatMap(function($tasks) {
+                return collect($tasks)->map(function($task) {
+                    return [
+                        'week_number' => 1, // Since total_weeks is 1 in your data
+                        'task_count' => 1
+                    ];
+                });
+            })
             ->groupBy('week_number')
-            ->orderBy('week_number')
-            ->get();
+            ->map(function($tasks) {
+                return [
+                    'week_number' => $tasks->first()['week_number'],
+                    'task_count' => $tasks->count()
+                ];
+            })
+            ->values();
 
+        $this->info("\n📅 Weekly Breakdown:");
         $this->table(
-            ['Week', 'Tasks'],
-            $weeklyBreakdown->map(fn($item) => [
-                $item->week_number,
-                $item->task_count
+            ['Week', 'Total Tasks'],
+            $weeklyTasks->map(fn($item) => [
+                $item['week_number'],
+                $item['task_count']
             ])->toArray()
         );
+
+        $totalTasks = collect($schedule[1])
+            ->flatMap(fn($tasks) => $tasks)
+            ->count();
+        $totalHours = collect($schedule[1])
+            ->flatMap(fn($tasks) => $tasks)
+            ->sum('duration');
+
+        $this->info("\n📈 Overall Summary:");
+        $this->line(" • Total Developers: " . count($schedule[1]));
+        $this->line(" • Total Tasks: $totalTasks");
+        $this->line(" • Total Hours: $totalHours");
     }
 
 }

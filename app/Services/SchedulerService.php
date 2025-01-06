@@ -8,35 +8,10 @@ use App\Models\Task;
 class SchedulerService
 {
     /**
-     * Calculate schedule for all unassigned tasks
+     * Calculate schedule for all tasks
      */
-    public function calculateSchedule(): array
+    public function calculateSchedule(array $developers, array $tasks): array
     {
-        // Get all active developers
-        $developers = Developer::where('is_active', true)
-            ->get()
-            ->keyBy('name')
-            ->map(function ($developer) {
-                return [
-                    'efficiency_rate' => $developer->efficiency_rate,
-                    'weekly_hours' => $developer->weekly_hours,
-                ];
-            })
-            ->toArray();
-
-        // Get all unassigned tasks
-        $tasks = Task::whereNull('assigned_to')
-            ->whereNull('week_number')
-            ->get()
-            ->map(function ($task) {
-                return [
-                    'id' => $task->id,
-                    'duration' => $task->duration,
-                    'difficulty' => $task->difficulty,
-                ];
-            })
-            ->toArray();
-
         $schedule = [];
         $currentWeek = 1;
         $remainingTasks = $tasks;
@@ -46,16 +21,6 @@ class SchedulerService
             $schedule[$currentWeek] = $weeklySchedule['assignments'];
             $remainingTasks = $weeklySchedule['remaining'];
             $currentWeek++;
-
-            // Update tasks in database with assignments
-            foreach ($weeklySchedule['assignments'] as $developerName => $assignedTasks) {
-                foreach ($assignedTasks as $task) {
-                    Task::where('id', $task['id'])->update([
-                        'assigned_to' => $developerName,
-                        'week_number' => $currentWeek - 1
-                    ]);
-                }
-            }
         }
 
         return [
@@ -100,7 +65,7 @@ class SchedulerService
 
         foreach ($developers as $devName => $developer) {
             if ($remainingHours[$devName] >= $task['duration']) {
-                $timeToComplete = $task['duration'] * $task['difficulty'] / $developer['efficiency_rate'];
+                $timeToComplete = $task['duration'] * $task['complexity'] / $developer['efficiency_rate'];
 
                 if ($timeToComplete < $bestTime) {
                     $bestTime = $timeToComplete;

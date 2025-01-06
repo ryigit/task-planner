@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Factory\TodoProviderFactory;
 use App\Models\Provider;
+use App\Models\Task;
 
 class TaskProviderService
 {
@@ -27,6 +28,17 @@ class TaskProviderService
             $provider = $this->factory->create('default', $providerConfig);
             $tasks = $provider->getTasks();
             $allTasks = array_merge($allTasks, $tasks);
+        }
+
+        foreach ($allTasks as $task) {
+            Task::create([
+                'name' => $task['name'],
+                'complexity' => $task['complexity'],
+                'duration' => $task['duration'],
+                'provider_id' => $task['provider_id'],
+                'source_id' => $task['source_id'],
+                'original_payload' => $task['original_payload']
+            ]);
         }
 
         return $allTasks;

@@ -10,6 +10,11 @@
 <body class="bg-light">
 <div class="container py-5">
     <div class="row mb-4 align-items-center">
+        <div class="mb-4">
+            <a href="{{ route('providers.index') }}" class="btn btn-outline-primary">
+                <i class="bi bi-arrow-left"></i> Manage Providers
+            </a>
+        </div>
         <div class="col">
             <h1 class="mb-0">
                 <i class="bi bi-calendar-check"></i> Task Schedule

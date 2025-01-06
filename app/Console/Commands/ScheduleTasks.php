@@ -16,7 +16,7 @@ class ScheduleTasks extends Command
      *
      * @var string
      */
-    protected $signature = 'app:schedule-tasks';
+    protected $signature = 'app:schedule-tasks {--fetch-only : Fetch and persist tasks without creating the schedule}';
 
     /**
      * The console command description.
@@ -42,6 +42,11 @@ class ScheduleTasks extends Command
         try {
             $tasks = $this->taskProviderService->fetchAndPersistTasks();
             $this->info("Retrieved and saved " . count($tasks) . " tasks.");
+
+            if ($this->option('fetch-only')) {
+                $this->info('Fetch and persist completed. Skipping schedule creation.');
+                return 0;
+            }
 
             $schedule = $this->createSchedule();
             $this->displayResults($schedule);

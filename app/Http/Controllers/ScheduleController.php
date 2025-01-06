@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Repositories\DeveloperRepository;
 use App\Repositories\TaskRepository;
 use App\Services\SchedulerService;
-use App\Services\TaskProviderService;
 use Exception;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
@@ -13,21 +12,11 @@ use Illuminate\Foundation\Application;
 
 class ScheduleController extends Controller
 {
-    private $taskProviderService;
-    private $schedulerService;
-    private $developerRepository;
-    private $taskRepository;
-
     public function __construct(
-        TaskProviderService $taskProviderService,
-        SchedulerService $schedulerService,
-        DeveloperRepository $developerRepository,
-        TaskRepository $taskRepository
+        private readonly SchedulerService    $schedulerService,
+        private readonly DeveloperRepository $developerRepository,
+        private readonly TaskRepository      $taskRepository
     ) {
-        $this->taskProviderService = $taskProviderService;
-        $this->schedulerService = $schedulerService;
-        $this->developerRepository = $developerRepository;
-        $this->taskRepository = $taskRepository;
     }
 
     /**
@@ -37,7 +26,6 @@ class ScheduleController extends Controller
     {
         $schedule = $this->createSchedule();
 
-        // Return to view with data
         return view('schedule.index', [
             'schedule' => $schedule['schedule'],
             'totalWeeks' => $schedule['total_weeks']
